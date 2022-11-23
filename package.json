@@ -1,0 +1,17 @@
+{
+  "name": "reactor-lgtv",
+  "version": "0.1.221123",
+  "description": "Reactor Add-on: LGTV",
+  "homepage": "https://github.com/dbochicchio/reactor-lgtv",
+  "main": "./LGTVController.js",
+  "private": true,
+  "author": "Daniele Bochicchio <daniele@bochicchio.com>",
+  "license": "MIT",
+
+  "dependencies": {
+    "lgtv2": "^1.6.3",
+		"mkdirp": "^1.0.4",
+		"persist-path": "1.0.2",
+		"websocket": "^1.0.32"
+	}
+}

@@ -1,0 +1,21 @@
+# Copy and paste everything below (not including) the --- into the
+# "controllers" section of your reactor.yaml file.
+---
+
+  - id: lgtvcontroller
+    name: LG TV
+    implementation: LGTVController
+    enabled: true
+    config:
+      #
+      # Replace the IP with that of your LG TV host below.
+      host: 192.168.1.21
+
+      # interval for refresh: default 5 secs
+      #interval: 5000
+
+      # timeout: default 15 secs
+      #timeout: 15000
+
+      # error_interval: default 10 secs
+      #error_interval: 10000

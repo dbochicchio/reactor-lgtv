@@ -1,0 +1,19 @@
+# lgtvcontroller_capabilities.yaml
+#
+# Copyright (C) 2022 Daniele Bochicchio, All Rights Reserved
+#
+# *** IMPORTANT ***
+# This is a system file. DO NOT place overrides or make modifications here.
+---
+version: 221123
+revision: 1
+format: 1
+
+capabilities:
+  x_lgtv:
+    attributes:
+    actions:
+      sendnotification:
+        arguments:
+          text:
+            type: string
