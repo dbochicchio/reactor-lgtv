@@ -1,6 +1,6 @@
 {
   "name": "reactor-lgtv",
-  "version": "0.1.221123",
+  "version": "0.1.221126",
   "description": "Reactor Add-on: LGTV",
   "homepage": "https://github.com/dbochicchio/reactor-lgtv",
   "main": "./LGTVController.js",
