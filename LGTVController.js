@@ -6,7 +6,7 @@
  *  Disclaimer: Thi is beta software, so quirks anb bugs are expected. Please report back.
  */
 
-const version = 221123;
+const version = 221126;
 const className = "lgtv";
 const ns = "x_lgtv"
 const ignoredValue = "@@IGNORED@@"
@@ -214,7 +214,7 @@ module.exports = class LGTVController extends Controller {
         switch (actionName) {
             case `${ns}.sendnotification`:
                 if (params?.text == undefined) {
-                    log.warn("%1 LG TV %2- text param is mandatory and was not specified", that, that.config.host);
+                    this.log.warn("%1 LG TV %2- text param is mandatory and was not specified", that, that.config.host);
                 }
                 else {
                     if (this.connected)
@@ -222,7 +222,7 @@ module.exports = class LGTVController extends Controller {
                             message: params.text
                         });
                     else
-                        log.warn("%1 LG TV %2 is offline - can't send: %3", that, that.config.host, params.text);
+                        this.log.warn("%1 LG TV %2 is offline - can't send: %3", that, that.config.host, params.text);
                 }
                 return;
             case 'power_switch.on':
