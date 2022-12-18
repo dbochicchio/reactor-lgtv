@@ -1,8 +1,13 @@
 # LGTVController Changelog
 
+# 221218
+* Bug fixes
+* Support for *sys_system.restart*
+* Support for custom volume amount in relative actions
+
 ## 221126
 
-* Small fixes
+* Bug fixes
 
 ## 221123
 
