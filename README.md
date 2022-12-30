@@ -17,9 +17,11 @@ Change directory into the new *ext* directory:
 
 ```
 cd ext
+mkdir LGTVController
 ```
 
-Copy all the files.
+Copy all the files in the new directory named *LGTVController*.
+Your final path should be */path/to/reactor/ext/LGTVController*.
 
 Run the install script. If you are using a "bare metal" install (not a docker container):
 
@@ -67,7 +69,7 @@ controllers:
 ```
 
 Restart Reactor to make the changes take effect. After that, you should be able to refresh the UI, go the Entities list, clear any existing filters, and choose "LG TV" from the controllers filter selector. That should then show you one entity represening the TV. If you don't see this, check the log for errors.
-If you have multiple TVs, just repeat the registration.
+If you have multiple TVs, just repeat the registration, changing the *id* attribute in your registraion (that must be unique).
 
 ## Capabilities
 
