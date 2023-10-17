@@ -1,12 +1,12 @@
 /** A Reactor controller for LG TVs.
- *  Copyright (c) 2022 Daniele Bochicchio, All Rights Reserved.
+ *  Copyright (c) 2022/2023 Daniele Bochicchio, All Rights Reserved.
  *  LGTVController is offered under MIT License - https://mit-license.org/
  *  More info: https://github.com/dbochicchio/reactor-lgtv
  *
- *  Disclaimer: Thi is beta software, so quirks anb bugs are expected. Please report back.
+ *  Disclaimer: This is beta software, so quirks and bugs are expected. Please report back.
  */
 
-const version = 221218;
+const version = 231017;
 const className = "lgtv";
 const ns = "x_lgtv"
 const ignoredValue = "@@IGNORED@@"
@@ -20,10 +20,21 @@ Logger.getLogger('LGTVController', 'Controller').always("Module LGTVController v
 //const Configuration = require("server/lib/Configuration");
 //const logsdir = Configuration.getConfig("reactor.logsdir");  /* logs directory path if you need it */
 
+const TimerBroker = require("server/lib/TimerBroker");
+
 // modules
 const util = require("server/lib/util");
 
-const delay = ms => new Promise(res => setTimeout(res, ms));
+const debounce = (callback, wait) => {
+	let timeoutId = null;
+	return (...args) => {
+		clearTimeout(timeoutId);
+		timeoutId = setTimeout(() => {
+			callback.apply(null, args);
+		}, wait);
+	};
+}
+
 
 var impl = false;  /* Implementation data, one copy for all instances, will be loaded by start() later */
 
@@ -57,6 +68,8 @@ module.exports = class LGTVController extends Controller {
 		}
 
 		this.log.debug(5, "%1 starting", this);
+
+		this.updateQueue = {};
 
 		this.stopping = false;
 		this.run();
@@ -92,7 +105,7 @@ module.exports = class LGTVController extends Controller {
 		that.online();
 
 		this.lgtv = new LGTV({
-			url: `ws://${that.config.host}:3000`,
+			url: (that.config.secure ?? true) ? `wss://${that.config.host}:3001` : `ws://${that.config.host}:3000`,
 			timeout: that.config.timeout || 15000,
 			keyFile: `${__dirname}/client.key` // TODO: path from config/code
 		});
@@ -119,13 +132,12 @@ module.exports = class LGTVController extends Controller {
 			log.notice("%1 Connected: %2", that, that.config.host);
 
 			that.connected = true;
-			var state = 'on';
 
 			that.mapDevice(e, that.config.name ?? "LG TV",
 				["volume", "muting", "power_switch", "toggle", ns], "power_switch.state",
 				{
-					"power_switch.state": state,
-					"toggle.state": state,
+					"power_switch.state": true,
+					"toggle.state": true,
 					"_ns_.online": true,
 				});
 
@@ -140,8 +152,11 @@ module.exports = class LGTVController extends Controller {
 				if (res.changed !== undefined && res.changed.indexOf('volume') !== -1) attributes["volume.level"] = res.volume / 100;
 				if (res.changed !== undefined && res.changed.indexOf('muted') !== -1) attributes["muting.state"] = res.muted;
 
-				// update attributes
-				that.updateEntityAttributes(e, attributes);
+				// update attributes with debounce
+				debounce(function () {
+					log.debug(5, "%1 debounce: %2", that, attributes);
+					that.updateEntityAttributes(e, attributes);
+				}, 2000)();
 			});
 
 			var liveTVReady = false;
@@ -182,11 +197,11 @@ module.exports = class LGTVController extends Controller {
 			log.debug(5, "%1 Connection closed: %2", that, that.config.host);
 			that.connected = false;
 
-			var attributes = {};
-			var state = 'off';
-			attributes["power_switch.state"] = state;
-			attributes["toggle.state"] = state;
-			attributes["_ns_.online"] = false;
+			var attributes = {
+				"power_switch.state": false,
+				"toggle.state": false,
+				"_ns_.online": false,
+			};
 
 			// update attributes
 			that.updateEntityAttributes(e, attributes);
@@ -199,7 +214,13 @@ module.exports = class LGTVController extends Controller {
 	onError(that, err) {
 		console.log(err);
 		that.log.err("%1 Error: %2", that, err);
-		that.startDelay(Math.min(120_000, (that.config.error_interval || 5_000) * Math.max(1, ++that.failures - 12)));
+
+		try {
+			that.startDelay(Math.min(120_000, (that.config.error_interval || 5_000) * Math.max(1, ++that.failures - 12)));
+		}
+		catch {
+			// soft warning
+		}
 
 		if (that.failures >= 3) {
 			that.offline();
@@ -210,18 +231,20 @@ module.exports = class LGTVController extends Controller {
 	async performOnEntity(e, actionName, params) {
 		this.log.debug(5, "%1 [performOnEntity] %3 - %2 - %4", this, actionName, e, params);
 
+		if (!this.connected) {
+			this.log.warn("%1 LG TV %2 is offline - can't execute: %3", this, this.config.host, actionName);
+			return;
+		}
+
 		switch (actionName) {
 			case `${ns}.sendnotification`:
 				if (params?.text == undefined) {
-					this.log.warn("%1 LG TV %2- text param is mandatory and was not specified", this, this.config.host);
+					this.log.warn("%1 LG TV %2- text param is mandatory and must be specified", this, this.config.host);
 				}
 				else {
-					if (this.connected)
-						this.lgtv?.send("request", "ssap://system.notifications/createToast", {
-							message: params.text
-						});
-					else
-						this.log.warn("%1 LG TV %2 is offline - can't send: %3", this, this.config.host, params.text);
+					this.lgtv?.send("request", "ssap://system.notifications/createToast", {
+						message: params.text
+					});
 				}
 				return;
 			case 'power_switch.on':
@@ -279,6 +302,7 @@ module.exports = class LGTVController extends Controller {
 
 			case 'sys_system.restart':
 				this.lgtv = undefined;
+				this.stopping = false;
 				this.startClient();
 				return;
 		}
@@ -338,6 +362,8 @@ module.exports = class LGTVController extends Controller {
 
 		if (e && attributes) {
 			var id = e.getID();
+			e.deferNotifies(true);
+			e.markDead(false);
 
 			for (const attr in attributes) {
 				var newValue = attributes[attr];
@@ -351,12 +377,13 @@ module.exports = class LGTVController extends Controller {
 					// check for and skip unchanged values
 					var changed = value != newValue && JSON.stringify(value) != JSON.stringify(newValue);
 					if (changed) {
-						this.log.debug(5, "%1 [%2] %3: %4 => %5", this, id, attrName, newValue, value);
+						this.log.debug(5, "%1 [%2] %3: %4 => %5", this, id, attrName, value, newValue);
 						e.setAttribute(attrName, newValue);
 					}
 				}
-			};
+			}
+
+			e.deferNotifies(false);
 		}
 	}
-
 };

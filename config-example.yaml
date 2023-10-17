@@ -11,6 +11,9 @@
       # Replace the IP with that of your LG TV host below.
       host: 192.168.1.21
 
+      # set false to use ws, true to use wss
+      secure: true
+
       # interval for refresh: default 5 secs
       #interval: 5000
 
