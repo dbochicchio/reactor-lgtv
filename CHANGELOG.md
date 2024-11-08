@@ -1,6 +1,11 @@
 # LGTVController Changelog
 
-# 231017
+# 25313
+
+* Updated logic for entities. Reactoring
+
+# 231018
+
 * Moved to wss for newer firmwares. Default settings, set otherwise "secure: false".
 
 # 230112

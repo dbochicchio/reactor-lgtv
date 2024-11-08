@@ -77,7 +77,7 @@ If you have multiple TVs, just repeat the registration, changing the *id* attrib
  - Set/Get mute (via standard *muting* capability)
  - Turn on/off TV  (via standard *power_switch* capability)
  - Get current HDMI and audio output (see *x_lgtv.input* and *x_lgtv.output*)
- - Send toast notification, via *x_lgtv.sendnotification* action
+ - Send toast notification, via *x_lgtv.send_notification* action
  
  Both *power_switch.state* and *x_lgtv.online* will be *false* when TV is off.
  *x_lgtv.online* is true when TV network is reachable.

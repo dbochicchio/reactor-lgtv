@@ -6,24 +6,22 @@
  *  Disclaimer: This is beta software, so quirks and bugs are expected. Please report back.
  */
 
-const version = 231017;
+const version = 25313;
 const className = "lgtv";
 const ns = "x_lgtv"
 const ignoredValue = "@@IGNORED@@"
 
 const Controller = require("server/lib/Controller");
+const Capabilities = require("server/lib/Capabilities");
+
 const LGTV = require('lgtv2');
 
 const Logger = require("server/lib/Logger");
 Logger.getLogger('LGTVController', 'Controller').always("Module LGTVController v%1", version);
 
-//const Configuration = require("server/lib/Configuration");
-//const logsdir = Configuration.getConfig("reactor.logsdir");  /* logs directory path if you need it */
+const util = require("server/lib/util");
 
 const TimerBroker = require("server/lib/TimerBroker");
-
-// modules
-const util = require("server/lib/util");
 
 const debounce = (callback, wait) => {
 	let timeoutId = null;
@@ -34,7 +32,6 @@ const debounce = (callback, wait) => {
 		}, wait);
 	};
 }
-
 
 var impl = false;  /* Implementation data, one copy for all instances, will be loaded by start() later */
 
@@ -69,8 +66,6 @@ module.exports = class LGTVController extends Controller {
 
 		this.log.debug(5, "%1 starting", this);
 
-		this.updateQueue = {};
-
 		this.stopping = false;
 		this.run();
 
@@ -102,12 +97,23 @@ module.exports = class LGTVController extends Controller {
 		var log = this.log;
 
 		log.debug(5, "%1 [refreshStatus] - startClient: %2", that, that.config.host);
+		this.mapSystemDevice(that, false);
 		that.online();
 
 		this.lgtv = new LGTV({
 			url: (that.config.secure ?? true) ? `wss://${that.config.host}:3001` : `ws://${that.config.host}:3000`,
 			timeout: that.config.timeout || 15000,
-			keyFile: `${__dirname}/client.key` // TODO: path from config/code
+			keyFile: `${__dirname}/client.key`, // TODO: path from config/code
+
+			wsconfig: {
+				keepalive: true,
+				keepaliveInterval: 10000,
+				dropConnectionOnKeepaliveTimeout: false,
+				keepaliveGracePeriod: 5000,
+				tlsOptions: {
+					rejectUnauthorized: false
+				}
+			}
 		});
 
 		this.lgtv.on('error', function (err) {
@@ -117,13 +123,16 @@ module.exports = class LGTVController extends Controller {
 			else
 				that.onError(that, err);
 
+			// update connection status
 			that.connected = false;
-			that.updateEntityAttributes(e, { "_ns_.online": false });
+			that.updateConnection(e, that.connected);
 		});
 
 		this.lgtv.on('connecting', function () {
 			log.debug(5, "%1 Connecting to %2", that, that.config.host);
+			// update connection status
 			that.connected = false;
+			that.updateConnection(e, that.connected);
 		});
 
 		this.lgtv.on('connect', function () {
@@ -131,15 +140,9 @@ module.exports = class LGTVController extends Controller {
 
 			log.notice("%1 Connected: %2", that, that.config.host);
 
+			// update connection status
 			that.connected = true;
-
-			that.mapDevice(e, that.config.name ?? "LG TV",
-				["volume", "muting", "power_switch", "toggle", ns], "power_switch.state",
-				{
-					"power_switch.state": true,
-					"toggle.state": true,
-					"_ns_.online": true,
-				});
+			that.updateConnection(e, that.connected);
 
 			that.lgtv.subscribe('ssap://audio/getVolume', function (err, res) {
 				log.debug(5, "%1 getVolume: %2 - %3", that, that.config.host, res);
@@ -179,7 +182,7 @@ module.exports = class LGTVController extends Controller {
 								}
 
 								var attributes = {};
-								attributes["_ns_.channelid"] = res.channelNumber;
+								attributes["_ns_.channel_id"] = res.channelNumber;
 								that.updateEntityAttributes(e, attributes);
 							});
 						}, 3000);
@@ -195,22 +198,40 @@ module.exports = class LGTVController extends Controller {
 
 		this.lgtv.on('close', function () {
 			log.debug(5, "%1 Connection closed: %2", that, that.config.host);
+
+			// update connection status
 			that.connected = false;
-
-			var attributes = {
-				"power_switch.state": false,
-				"toggle.state": false,
-				"_ns_.online": false,
-			};
-
-			// update attributes
-			that.updateEntityAttributes(e, attributes);
+			that.updateConnection(e, that.connected);
 
 			log.debug(5, "%1 Connection closed", that);
 		});
 
 	}
 
+	/* mapSystemDevice() is used to create the system device */
+	mapSystemDevice(that, state) {
+		that.mapDevice("system", that.config.name ?? "LG TV",
+			["volume", "muting", "power_switch", "toggle", "sys_system", ns], "power_switch.state",
+			{
+				"power_switch.state": state,
+				"toggle.state": state,
+				"_ns_.online": state,
+			});
+	}
+
+	/* updateConnection() is used to update the connection status */
+	updateConnection(e, state) {
+		var attributes = {
+			"power_switch.state": state,
+			"toggle.state": state,
+			"_ns_.online": state,
+		};
+
+		// update attributes
+		this.updateEntityAttributes(e, attributes);
+	}
+
+	/* offline() is used to handle the offline status */
 	onError(that, err) {
 		console.log(err);
 		that.log.err("%1 Error: %2", that, err);
@@ -231,13 +252,14 @@ module.exports = class LGTVController extends Controller {
 	async performOnEntity(e, actionName, params) {
 		this.log.debug(5, "%1 [performOnEntity] %3 - %2 - %4", this, actionName, e, params);
 
-		if (!this.connected) {
+		if (!this.connected && !actionName.startsWith('sys_system')) {
 			this.log.warn("%1 LG TV %2 is offline - can't execute: %3", this, this.config.host, actionName);
 			return;
 		}
 
 		switch (actionName) {
 			case `${ns}.sendnotification`:
+			case `${ns}.send_notification`:
 				if (params?.text == undefined) {
 					this.log.warn("%1 LG TV %2- text param is mandatory and must be specified", this, this.config.host);
 				}
@@ -311,23 +333,20 @@ module.exports = class LGTVController extends Controller {
 	}
 
 	/* Maps a device into a MSR entity */
-	mapDevice(e, name, capabilities, defaultAttribute, attributes) {
-		var id = e.getID();
-
+	mapDevice(id, name, capabilities, defaultAttribute, attributes) {
 		this.log.debug(5, "%1 mapDevice(%2, %3, %4, %5, %6)", this, id, name, capabilities, defaultAttribute, attributes);
+
+		var isNew = false;
+		let e = this.findEntity(id);
 
 		try {
 			if (!e) {
-				this.log.debug(5, "%1 Creating new entity for %2", this, name);
+				this.log.notice("%1 Creating new entity for %2", this, name);
 				e = this.getEntity(className, id);
 				e.setName(name);
 				e.setType(className);
+				isNew = true;
 			}
-			else
-				if (e.getName() === "lgtvcontroller") {
-					e.setName(name);
-					e.setType(className);
-				}
 
 			e.deferNotifies(true);
 			e.markDead(false);
@@ -335,12 +354,15 @@ module.exports = class LGTVController extends Controller {
 			// capabilities
 			if (capabilities) {
 				this.log.debug(5, "%1 [%2] adding capabilities: %3", this, id, capabilities);
-				capabilities.forEach(c => {
-					if (!e.hasCapability(c)) {
-						this.log.debug(5, "%1 [%2] adding capability %3", this, id, c);
-						e.extendCapability(c);
-					}
-				});
+				e.extendCapabilities(capabilities);
+
+				// Check controller and system capabilities versions for changes
+				const vinfo = { ...Capabilities.getSysInfo(), controller: version };
+				const hash = util.hash(JSON.stringify(vinfo));
+				if (e._hash !== hash) {
+					e.refreshCapabilities();
+					e._hash = hash;
+				}
 			}
 
 			this.updateEntityAttributes(e, attributes);
@@ -348,20 +370,17 @@ module.exports = class LGTVController extends Controller {
 			if (defaultAttribute)
 				e.setPrimaryAttribute(defaultAttribute);
 
+			if (isNew)
+				this.sendNotice('Discovered new device {0:q} ({1}) on controller {2:q}', name, id, this);
 		} catch (err) {
 			this.log.err("%1 [mapDevice] error: %2", this, err);
 		} finally {
 			e.deferNotifies(false);
 		}
-
-		return e;
 	}
 
 	updateEntityAttributes(e, attributes) {
-		this.log.debug(5, "%1 updateEntityAttributes(%2, %3)", this, e, attributes);
-
 		if (e && attributes) {
-			var id = e.getID();
 			e.deferNotifies(true);
 			e.markDead(false);
 
@@ -377,7 +396,8 @@ module.exports = class LGTVController extends Controller {
 					// check for and skip unchanged values
 					var changed = value != newValue && JSON.stringify(value) != JSON.stringify(newValue);
 					if (changed) {
-						this.log.debug(5, "%1 [%2] %3: %4 => %5", this, id, attrName, value, newValue);
+						var id = e.getCanonicalID();
+						this.log.debug(5, "%1 [%2] %3: %4 => %5", this, id, attrName, newValue, value);
 						e.setAttribute(attrName, newValue);
 					}
 				}

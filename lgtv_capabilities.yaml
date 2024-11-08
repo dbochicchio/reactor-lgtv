@@ -5,15 +5,15 @@
 # *** IMPORTANT ***
 # This is a system file. DO NOT place overrides or make modifications here.
 ---
-version: 221205
-revision: 1
+version: 25313
+revision: 2
 format: 1
 
 capabilities:
   x_lgtv:
     attributes:
     actions:
-      sendnotification:
+      send_notification:
         arguments:
           text:
             type: string
