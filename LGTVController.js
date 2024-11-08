@@ -6,7 +6,7 @@
  *  Disclaimer: This is beta software, so quirks and bugs are expected. Please report back.
  */
 
-const version = 25313;
+const version = 24313;
 const className = "lgtv";
 const ns = "x_lgtv"
 const ignoredValue = "@@IGNORED@@"

@@ -1,6 +1,6 @@
 # LGTVController Changelog
 
-# 25313
+# 24313
 
 * Updated logic for entities. Reactoring
 
